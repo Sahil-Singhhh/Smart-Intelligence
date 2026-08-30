@@ -14,17 +14,33 @@ app.use(express.json());
 // Database Connection
 const connectDB = async () => {
     try {
-        const conn = await mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/smart-revision-planner');
-        console.log(`MongoDB Connected: ${conn.connection.host}`);
+        const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/smart-revision-planner';
+        console.log(`Connecting to MongoDB...`);
+        const conn = await mongoose.connect(mongoUri);
+        console.log(`MongoDB Connected Successfully: ${conn.connection.host}`);
     } catch (error) {
-        console.error(`Error: ${error.message}`);
-        process.exit(1);
+        console.error(`MongoDB Connection Warning: ${error.message}`);
+        console.error(`Note: Set MONGO_URI in environment variables to a cloud MongoDB Atlas cluster for Render production.`);
+        // Do NOT call process.exit(1) so Express server remains alive on cloud deployments
     }
 };
 
 connectDB();
 
-// Routes Placeholder
+// Root & Health Check Endpoint
+app.get('/', (req, res) => {
+    res.json({
+        status: 'online',
+        message: 'Smart Intelligence Backend API is active & running 🚀',
+        timestamp: new Date()
+    });
+});
+
+app.get('/health', (req, res) => {
+    res.json({ status: 'ok', uptime: process.uptime() });
+});
+
+// API Routes
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/topics', require('./routes/topicRoutes'));
 app.use('/api/tests', require('./routes/testRoutes'));
