@@ -1,0 +1,13 @@
+# Environment & Secrets (Gemini API key, JWT Secret, DB URI)
+.env
+.env.local
+.env.*
+*.env
+
+# Dependencies
+node_modules/
+
+# Logs & Temp test files
+*.log
+test_core_logic.js
+test_suggest.js

@@ -39,27 +39,128 @@ const getGeneratedTest = async (req, res) => {
 
 const suggestConcepts = async (req, res) => {
     const { subject, topic } = req.query;
-    // Simulated AI Logic (Rule-based)
-    // In a real app, this would call OpenAI/Gemini
-    const suggestions = [
-        `${topic} Fundamentals`,
-        `Applications of ${topic}`,
-        `History of ${topic}`,
-        `${topic} vs Related Concepts`,
-        `Advanced ${topic} Theories`,
-        `Common Misconceptions in ${topic}`
-    ];
+    const apiKey = process.env.GEMINI_API_KEY;
 
-    // Custom logic for common subjects
-    if (subject && subject.toLowerCase().includes('physics')) {
-        suggestions.push('Conservation Laws', 'Forces & Motion', 'Energy Transfer');
-    }
-    if (subject && subject.toLowerCase().includes('math')) {
-        suggestions.push('Formulas & Theorems', 'Problem Solving Techniques', 'Real-world Examples');
+    if (apiKey && apiKey.trim() !== '' && apiKey !== 'your_gemini_api_key_here') {
+        const modelsToTry = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro'];
+        const { GoogleGenerativeAI } = require('@google/generative-ai');
+
+        try {
+            const genAI = new GoogleGenerativeAI(apiKey.trim());
+            const prompt = `
+Generate 6 to 8 core key concepts, important formulas, or fundamental principles for the topic "${topic}" in the subject "${subject || 'General Studies'}".
+
+Return ONLY valid JSON wrapped in markdown code fences:
+\`\`\`json
+{
+  "suggestions": [
+    "Concept 1",
+    "Concept 2"
+  ]
+}
+\`\`\`
+`;
+
+            for (const modelName of modelsToTry) {
+                try {
+                    const model = genAI.getGenerativeModel({ model: modelName });
+                    const result = await model.generateContent(prompt);
+                    const text = result.response.text();
+                    let cleanText = text.replace(/```json/gi, '').replace(/```/gi, '').trim();
+                    const parsed = JSON.parse(cleanText);
+                    if (parsed && Array.isArray(parsed.suggestions) && parsed.suggestions.length > 0) {
+                        return res.json({ suggestions: parsed.suggestions, engine: `Gemini AI (${modelName})` });
+                    }
+                } catch (modelErr) {
+                    // Try next model
+                }
+            }
+        } catch (err) {
+            console.error('Gemini suggestConcepts error:', err.message);
+        }
     }
 
-    res.json({ suggestions });
+    // Smart Domain-Specific Concept Engine Fallback
+    const topicLower = (topic || '').toLowerCase();
+    const subjLower = (subject || '').toLowerCase();
+
+    let suggestions = [];
+
+    // Array / Vectors
+    if (topicLower.includes('array') || topicLower.includes('vector') || (subjLower.includes('dsa') && topicLower.includes('arr'))) {
+        suggestions = [
+            'Contiguous Memory Allocation & Indexing Arithmetic',
+            'Time Complexity: O(1) Access vs O(n) Insertion',
+            'Static Arrays vs Dynamic Arrays (ArrayList / Vector)',
+            'Multi-Dimensional Arrays & Matrix Traversal',
+            'Two Pointer Technique (Left/Right & Slow/Fast)',
+            'Sliding Window Algorithm for Subarrays',
+            'Prefix Sum & Difference Arrays',
+            'Array Bounds, Overflow & Out-Of-Bounds Exceptions'
+        ];
+    }
+    // Linked Lists
+    else if (topicLower.includes('link') || topicLower.includes('list')) {
+        suggestions = [
+            'Singly, Doubly & Circular Linked List Architectures',
+            'Node Structure: Data Payload & Pointer References',
+            'Insertion & Deletion at Head, Tail & Arbitrary Index',
+            "Floyd's Cycle Finding Algorithm (Tortoise and Hare)",
+            'Reversing a Linked List (Iterative & Recursive)',
+            'Time & Space Complexity vs Contiguous Arrays',
+            'LRU Cache Implementation using Doubly Linked List'
+        ];
+    }
+    // Stacks & Queues
+    else if (topicLower.includes('stack') || topicLower.includes('queue')) {
+        suggestions = [
+            'LIFO (Last In First Out) vs FIFO (First In First Out) Principles',
+            'Push, Pop, Peek, Enqueue, and Dequeue Operations',
+            'Array & Linked List Implementations',
+            'Monotonic Stack & Monotonic Queue Techniques',
+            'Infix, Prefix, and Postfix Expression Conversion',
+            'Call Stack, Recursion Frames & Buffer Underflow/Overflow'
+        ];
+    }
+    // Trees & Binary Search Trees
+    else if (topicLower.includes('tree') || topicLower.includes('bst') || topicLower.includes('graph')) {
+        suggestions = [
+            'Tree Hierarchy: Root, Parent, Child, Leaf & Height',
+            'Binary Search Tree (BST) Properties & Search Invariants',
+            'Tree Traversals: Inorder, Preorder, Postorder & Level-Order (BFS)',
+            'Depth-First Search (DFS) & Backtracking',
+            'Balanced Trees: AVL Trees & Red-Black Trees',
+            'Heap / Priority Queue & Heapify Operations'
+        ];
+    }
+    // React / Web Dev
+    else if (topicLower.includes('react') || topicLower.includes('js') || topicLower.includes('web')) {
+        suggestions = [
+            'JSX Syntax & Component Hierarchy',
+            'State Management with useState & Redux / Context',
+            'Side Effects & Lifecycle Management with useEffect',
+            'Virtual DOM & Reconciliation Diffing Algorithm',
+            'Props Drilling vs Context API Provider Pattern',
+            'Performance Optimization: useMemo, useCallback, React.memo'
+        ];
+    }
+    // General Fallback tailored to topic
+    else {
+        suggestions = [
+            `${topic} Core Definition & Fundamental Concepts`,
+            `Key Mathematical & Theoretical Properties of ${topic}`,
+            `Practical Real-World Applications of ${topic} in ${subject || 'its domain'}`,
+            `${topic} Essential Formulas, Syntax, or Rules`,
+            `Performance, Complexity & Optimization in ${topic}`,
+            `Advanced Variations & Sub-topics of ${topic}`,
+            `Common Pitfalls, Edge Cases & Debugging ${topic}`
+        ];
+    }
+
+    res.json({ suggestions, engine: 'Smart Concept Engine' });
 };
+
+
 
 const getRevisionPlan = async (req, res) => {
     try {

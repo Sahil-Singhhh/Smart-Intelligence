@@ -1,4 +1,5 @@
 const Topic = require('../models/Topic');
+const TestResult = require('../models/TestResult');
 
 const addTopic = async (req, res) => {
     const { subject, topicName, difficulty, priority, keyPoints } = req.body;
@@ -42,18 +43,17 @@ const deleteTopic = async (req, res) => {
             return res.status(401).json({ message: 'Not authorized' });
         }
 
-        // Use deleteOne instead of remove
+        // Delete topic document
         await Topic.deleteOne({ _id: topic._id });
 
-        // Also delete associated test results to keep data clean
-        // We need to require TestResult model first if not already there, 
-        // but let's check imports. Topic is there. 
-        // We'll trust TestResult is needed or we can import it.
-        // Wait, I need to check if TestResult is imported. 
-        // It is NOT imported in the original file view. I should add the import too.
+        // Clean up associated test results
+        await TestResult.deleteMany({ topicId: topic._id });
+
+        // Send HTTP success response
+        return res.json({ message: 'Topic deleted successfully', id: topic._id });
     } catch (error) {
         console.error('Error deleting topic:', error);
-        res.status(500).json({ message: 'Server error' });
+        return res.status(500).json({ message: 'Server error: ' + error.message });
     }
 };
 

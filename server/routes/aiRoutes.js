@@ -6,6 +6,7 @@ const { protect } = require('../middleware/authMiddleware');
 router.get('/revision-plan', protect, getRevisionPlan);
 router.get('/direction', protect, getDailyDirection);
 router.get('/generate-test', protect, getGeneratedTest);
-router.get('/suggest-concepts', protect, suggestConcepts);
+// Unprotected utility route for instant concept auto-suggestions
+router.get('/suggest-concepts', suggestConcepts);
 
 module.exports = router;

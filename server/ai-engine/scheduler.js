@@ -1,74 +1,69 @@
+/**
+ * Spaced Repetition Scheduler Algorithm (Ebbinghaus Forgetting Curve + SuperMemo SM-2)
+ * @param {string} complexity - Easy | Medium | Hard
+ * @param {string} priority - Low | Medium | High
+ * @param {number|null} last_score - Percentage score (0 to 100)
+ * @param {number} current_interval - Previous interval in days
+ * @param {number} ease_factor - Topic ease factor (default 2.5)
+ * @returns {Object} { next_revision_date, days_until_next, new_ease_factor, recommendation }
+ */
 const calculate_smart_schedule = (complexity, priority, last_score = null, current_interval = 0, ease_factor = 2.5) => {
-    // 1. Mapping Complexity to a Divider
-    // Harder topics = Smaller intervals (more frequent revision)
-    const complexity_map = {
-        "Easy": 0.8,   // Gap thoda bada kar dega
-        "Medium": 1.0, // Neutral
-        "Hard": 1.3    // Gap chota kar dega (1.3x more frequent)
-    };
-    // Default to 1.0 if complexity is not found or is null
-    const comp_multiplier = complexity_map[complexity] || 1.0;
-
-    // Ensure numeric types
     current_interval = parseInt(current_interval) || 0;
+    ease_factor = parseFloat(ease_factor) || 2.5;
 
-    let next_interval;
+    const comp_map = { "Easy": 0.8, "Medium": 1.0, "Hard": 1.3 };
+    const comp_multiplier = comp_map[complexity] || 1.0;
 
-    // 2. Logic Implementation
+    let next_interval = 1;
+    let new_ease_factor = ease_factor;
+    let recommendation = "";
 
-    if (last_score !== null) {
-        last_score = parseInt(last_score);
+    if (last_score !== null && last_score !== undefined) {
+        const score = parseInt(last_score);
 
-        // Case A: First Time Test (Interval was 0)
-        if (current_interval === 0) {
-            if (last_score >= 90) next_interval = 4;      // Excellent start -> 4 days
-            else if (last_score >= 70) next_interval = 2; // Good start -> 2 days
-            else next_interval = 1;                       // Needs work -> 1 day
-        }
-        // Case B: Subsequent Reviews (Established Interval)
-        else {
-            if (last_score >= 80) {
-                // Success: Increase Gap significantly
-                // Use ease_factor (default 2.5)
-                // If perfect score (100), give a small bonus multiplier (1.1x)
-                const bonus = (last_score === 100) ? 1.1 : 1.0;
-                next_interval = (current_interval * ease_factor * bonus) / comp_multiplier;
-            } else if (last_score >= 50) {
-                // Struggle / Passable: Slight Increase or Maintain
-                // E.g. Multiply by 1.2 instead of 2.5
-                next_interval = (current_interval * 1.2) / comp_multiplier;
+        // 1. LOW SCORE (< 60%): Reset learning cycle for immediate review (Tomorrow)
+        if (score < 60) {
+            next_interval = 1; // Immediate review tomorrow
+            new_ease_factor = Math.max(1.3, ease_factor - 0.2);
+            recommendation = `Low Score (${score}%). Learning cycle reset to 1 day for urgent concept reinforcement.`;
+        } 
+        // 2. HIGH SCORE (>= 80%): Expand learning cycle for Long-Term Memory Retention
+        else if (score >= 80) {
+            if (current_interval <= 1) {
+                next_interval = 7; // 1 week
+            } else if (current_interval <= 7) {
+                next_interval = 14; // 2 weeks
             } else {
-                // Fail: Decrease / Reset ("Kam kro")
-                if (priority === "High") {
-                    next_interval = 1; // Immediate Review
-                } else {
-                    // Halve the interval or reset to 1 if it's already small
-                    next_interval = Math.max(1, Math.floor(current_interval / 2));
-                }
+                next_interval = 30; // 1 month long-term memory retention
             }
+
+            // Adjust for topic complexity
+            next_interval = Math.round(next_interval / comp_multiplier);
+            new_ease_factor = Math.min(3.0, ease_factor + 0.15);
+            recommendation = `High Score (${score}%). Topic scheduled for long-term memory retention review in ${next_interval} days.`;
+        } 
+        // 3. MEDIUM SCORE (60% - 79%): Moderate Spaced Interval
+        else {
+            next_interval = current_interval === 0 ? 3 : Math.round((current_interval * 1.5) / comp_multiplier);
+            next_interval = Math.max(3, next_interval);
+            recommendation = `Moderate Score (${score}%). Scheduled for follow-up evaluation in ${next_interval} days.`;
         }
     } else {
-        // No score provided (just creating schedule?)
-        if (current_interval === 0) {
-            if (complexity === "Hard") next_interval = 1;
-            else next_interval = 2;
-        } else {
-            next_interval = current_interval;
-        }
+        next_interval = complexity === "Hard" ? 1 : 2;
+        recommendation = "Initial study schedule initialized.";
     }
 
-    // Final cleanup
     next_interval = Math.max(1, Math.round(next_interval));
 
-    // Calculate dates
     const today = new Date();
     const next_revision_date = new Date(today);
     next_revision_date.setDate(today.getDate() + next_interval);
 
     return {
-        next_revision_date: next_revision_date,
+        next_revision_date,
         days_until_next: next_interval,
-        priority_score: (priority === "High") ? 100 : 50
+        new_ease_factor: parseFloat(new_ease_factor.toFixed(2)),
+        recommendation
     };
 };
 
