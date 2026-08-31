@@ -3,7 +3,8 @@ const TestResult = require('../models/TestResult');
 const { analyzePerformance } = require('../ai-engine/performanceAnalyzer');
 const { generateRevisionPlan } = require('../ai-engine/revisionPlanner');
 const { suggestNextTest } = require('../ai-engine/testScheduler');
-const { generateTest } = require('../ai-engine/testGenerator');
+const { generateTest, generateTestFromPdfText } = require('../ai-engine/testGenerator');
+const { extractTextFromPdf } = require('../ai-engine/pdfExtractor');
 
 const getGeneratedTest = async (req, res) => {
     try {
@@ -37,12 +38,69 @@ const getGeneratedTest = async (req, res) => {
     }
 };
 
+const generateTestFromPdf = async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ message: 'No PDF file uploaded. Please upload a valid PDF.' });
+        }
+
+        const { topicName, subject, difficulty, topicId } = req.body;
+        const pdfBuffer = req.file.buffer;
+        const originalName = req.file.originalname || 'Uploaded_Notes.pdf';
+
+        // Extract text using multi-tier extractor (pdf-parse + stream fallback + domain inference)
+        const extractionResult = await extractTextFromPdf(pdfBuffer, originalName);
+        const extractedText = extractionResult.text;
+
+        let effectiveTopic = topicName;
+        let effectiveSubject = subject;
+        let effectiveDifficulty = difficulty || 'Medium';
+
+        // If a topicId was provided, load its info from DB if topicName not explicitly sent
+        if (topicId && (!effectiveTopic || !effectiveSubject)) {
+            const existingTopic = await Topic.findById(topicId);
+            if (existingTopic) {
+                effectiveTopic = effectiveTopic || existingTopic.topicName;
+                effectiveSubject = effectiveSubject || existingTopic.subject;
+                effectiveDifficulty = effectiveDifficulty || existingTopic.difficulty;
+            }
+        }
+
+        // Clean filename for fallback topic
+        const cleanName = originalName
+            .replace(/\.pdf$/i, '')
+            .replace(/\(\d+\)/g, '')
+            .replace(/[-_]/g, ' ')
+            .trim();
+
+        effectiveTopic = effectiveTopic || cleanName || 'Uploaded PDF Notes';
+        effectiveSubject = effectiveSubject || 'General Studies';
+
+        const testData = await generateTestFromPdfText(
+            extractedText,
+            effectiveTopic,
+            effectiveSubject,
+            effectiveDifficulty,
+            originalName
+        );
+
+        if (topicId) {
+            testData.meta.topicId = topicId;
+        }
+
+        res.json(testData);
+    } catch (error) {
+        console.error('Error generating test from PDF:', error);
+        res.status(500).json({ message: 'Server error while generating test from PDF: ' + error.message });
+    }
+};
+
 const suggestConcepts = async (req, res) => {
     const { subject, topic } = req.query;
     const apiKey = process.env.GEMINI_API_KEY;
 
     if (apiKey && apiKey.trim() !== '' && apiKey !== 'your_gemini_api_key_here') {
-        const modelsToTry = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro'];
+        const modelsToTry = ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-1.5-flash'];
         const { GoogleGenerativeAI } = require('@google/generative-ai');
 
         try {
@@ -271,4 +329,4 @@ const getDailyDirection = async (req, res) => {
     }
 };
 
-module.exports = { getRevisionPlan, getDailyDirection, getGeneratedTest, suggestConcepts };
+module.exports = { getRevisionPlan, getDailyDirection, getGeneratedTest, generateTestFromPdf, suggestConcepts };

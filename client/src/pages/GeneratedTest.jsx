@@ -1,15 +1,16 @@
 import { useState, useEffect } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api/client';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
-import { Brain, CheckCircle2, XCircle, Timer, ArrowRight, RotateCcw } from 'lucide-react';
+import { Brain, CheckCircle2, XCircle, Timer, ArrowRight, FileText, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const GeneratedTest = () => {
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
-    const topicId = searchParams.get('topicId');
+    const location = useLocation();
+    const queryTopicId = searchParams.get('topicId');
 
     const [testData, setTestData] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -22,9 +23,18 @@ const GeneratedTest = () => {
     const [results, setResults] = useState(null);
 
     useEffect(() => {
+        // 1. Check if test data was passed directly from PDF upload state
+        if (location.state?.pdfTestData) {
+            setTestData(location.state.pdfTestData);
+            setStartTime(Date.now());
+            setLoading(false);
+            return;
+        }
+
+        // 2. Otherwise fetch test data for topicId
         const fetchTest = async () => {
             try {
-                const { data } = await api.get(`/ai/generate-test?topicId=${topicId}`);
+                const { data } = await api.get(`/ai/generate-test?topicId=${queryTopicId}`);
                 setTestData(data);
                 setStartTime(Date.now());
             } catch (error) {
@@ -34,10 +44,12 @@ const GeneratedTest = () => {
             }
         };
 
-        if (topicId) {
+        if (queryTopicId) {
             fetchTest();
+        } else {
+            setLoading(false);
         }
-    }, [topicId]);
+    }, [queryTopicId, location.state]);
 
     // Timer Interval
     useEffect(() => {
@@ -74,7 +86,7 @@ const GeneratedTest = () => {
             }
         });
 
-        // Optimistic UI Result
+        // UI Result calculation
         const resultData = {
             total: testData.questions.length,
             correct: correctCount,
@@ -86,18 +98,21 @@ const GeneratedTest = () => {
         setResults(resultData);
         setSubmitted(true);
 
-        try {
-            await api.post('/tests/submit', {
-                topicId,
-                totalQuestions: testData.questions.length,
-                attempted: testData.questions.length, // Assuming all attempted for now, or just send total
-                correct: correctCount,
-                wrong: wrongCount,
-                timeTaken: timeTaken
-            });
-        } catch (error) {
-            console.error("Failed to submit test results", error);
-            alert("Results saved locally but failed to sync to server.");
+        const targetTopicId = location.state?.topicId || queryTopicId || testData.meta?.topicId;
+
+        if (targetTopicId) {
+            try {
+                await api.post('/tests/submit', {
+                    topicId: targetTopicId,
+                    totalQuestions: testData.questions.length,
+                    attempted: testData.questions.length,
+                    correct: correctCount,
+                    wrong: wrongCount,
+                    timeTaken: timeTaken
+                });
+            } catch (error) {
+                console.error("Failed to submit test results to server", error);
+            }
         }
     };
 
@@ -109,18 +124,25 @@ const GeneratedTest = () => {
 
     if (loading) {
         return (
-            <div className="flex flex-col items-center justify-center min-h-[50vh] text-center">
-                <div className="w-16 h-16 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mb-4" />
-                <p className="text-cyan-300 text-glow">Synthesizing Examination Matrix...</p>
+            <div className="flex flex-col items-center justify-center min-h-[50vh] text-center space-y-4">
+                <div className="w-16 h-16 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+                <p className="text-cyan-300 text-glow font-medium">Synthesizing AI Examination Matrix...</p>
+                <p className="text-xs text-gray-500">Parsing questions, options & explanations...</p>
             </div>
         );
     }
 
     if (!testData) {
         return (
-            <Card className="text-center py-12">
-                <p className="text-red-400">Failed to load assessment modules.</p>
-                <Button onClick={() => navigate('/')} className="mt-4">Back to Headquarters</Button>
+            <Card className="text-center py-12 space-y-4">
+                <div className="w-12 h-12 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center mx-auto text-red-400">
+                    <XCircle className="w-6 h-6" />
+                </div>
+                <h3 className="text-xl font-bold text-white">No Assessment Data Found</h3>
+                <p className="text-gray-400 text-sm max-w-sm mx-auto">Please upload a PDF document or select a registered topic to start taking an AI test.</p>
+                <Button onClick={() => navigate('/test')} className="mt-4 bg-gradient-to-r from-cyan-600 to-blue-600">
+                    Upload PDF & Take Test
+                </Button>
             </Card>
         );
     }
@@ -130,13 +152,20 @@ const GeneratedTest = () => {
     return (
         <div className="max-w-3xl mx-auto space-y-8 pb-12">
             {/* Context Header */}
-            <div className="flex items-center justify-between bg-black/40 backdrop-blur-md sticky top-4 z-10 p-4 rounded-xl border border-white/10 shadow-xl">
+            <div className="flex flex-wrap items-center justify-between bg-black/50 backdrop-blur-md sticky top-4 z-10 p-4 rounded-2xl border border-white/10 shadow-xl gap-4">
                 <div>
-                    <h2 className="text-sm text-gray-400 uppercase tracking-widest">{meta.subject}</h2>
-                    <h1 className="text-xl font-bold text-white max-w-[300px] truncate">{meta.topic}</h1>
+                    <div className="flex items-center gap-2 mb-0.5">
+                        <span className="text-xs text-cyan-400 uppercase tracking-widest font-semibold">{meta.subject}</span>
+                        {meta.sourcePdf && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/20 text-green-300 border border-green-500/30 flex items-center gap-1 font-mono">
+                                <FileText className="w-3 h-3" /> {meta.sourcePdf}
+                            </span>
+                        )}
+                    </div>
+                    <h1 className="text-xl font-bold text-white max-w-[320px] truncate">{meta.topic}</h1>
                 </div>
                 <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2 text-cyan-300 bg-cyan-500/10 px-3 py-1.5 rounded-lg border border-cyan-500/20">
+                    <div className="flex items-center gap-2 text-cyan-300 bg-cyan-500/10 px-3 py-1.5 rounded-xl border border-cyan-500/20">
                         <Timer className="w-4 h-4" />
                         <span className="font-mono font-medium">{formatTime(timeElapsed)}</span>
                     </div>
@@ -152,10 +181,10 @@ const GeneratedTest = () => {
 
                     return (
                         <motion.div
-                            key={q.id}
+                            key={q.id || index}
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: index * 0.1 }}
+                            transition={{ delay: index * 0.08 }}
                         >
                             <Card className={`relative overflow-visible transition-all duration-300 ${showFeedback ? (isCorrect ? 'border-green-500/30 bg-green-900/10' : 'border-red-500/30 bg-red-900/10') : ''}`}>
                                 <div className="absolute -left-3 -top-3 w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center font-bold text-white text-sm shadow-lg z-10">
@@ -168,7 +197,7 @@ const GeneratedTest = () => {
                                     </h3>
                                 </div>
 
-                                {q.type === 'MCQ' && (
+                                {q.type === 'MCQ' && q.options && (
                                     <div className="grid grid-cols-1 gap-3 ml-2">
                                         {q.options.map((opt, i) => {
                                             const selected = userAnswers[q.id] === opt;
@@ -186,7 +215,7 @@ const GeneratedTest = () => {
                                                 <div
                                                     key={i}
                                                     onClick={() => handleOptionSelect(q.id, opt)}
-                                                    className={`p-4 rounded-lg border transition-all cursor-pointer text-gray-300 ${optionClass}`}
+                                                    className={`p-4 rounded-xl border transition-all cursor-pointer text-gray-300 ${optionClass}`}
                                                 >
                                                     <div className="flex items-center justify-between">
                                                         <span>{opt}</span>
@@ -203,11 +232,11 @@ const GeneratedTest = () => {
                                     <motion.div
                                         initial={{ opacity: 0, height: 0 }}
                                         animate={{ opacity: 1, height: 'auto' }}
-                                        className="mt-4 ml-2 p-4 rounded-lg bg-black/40 border border-white/10 text-sm"
+                                        className="mt-4 ml-2 p-4 rounded-xl bg-black/40 border border-white/10 text-sm"
                                     >
                                         <p className="text-gray-400 italic">
                                             <span className="font-semibold text-cyan-400">Explanation: </span>
-                                            {q.explanation}
+                                            {q.explanation || 'Based on core principles of the subject material.'}
                                         </p>
                                     </motion.div>
                                 )}
@@ -218,11 +247,11 @@ const GeneratedTest = () => {
             </div>
 
             {/* Actions */}
-            <div className="sticky bottom-6 flex justify-center pt-4">
+            <div className="sticky bottom-6 flex justify-center pt-4 z-20">
                 {!submitted ? (
                     <Button
                         onClick={handleSubmit}
-                        className="w-full max-w-md bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-lg py-4 shadow-xl shadow-cyan-900/20"
+                        className="w-full max-w-md bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-lg py-4 shadow-xl shadow-cyan-900/30 border-none"
                         disabled={Object.keys(userAnswers).length < questions.length}
                     >
                         {Object.keys(userAnswers).length < questions.length
@@ -230,23 +259,26 @@ const GeneratedTest = () => {
                             : 'Submit Assessment'}
                     </Button>
                 ) : (
-                    <div className="bg-black/80 backdrop-blur-md p-6 rounded-2xl border border-white/10 shadow-2xl w-full max-w-lg text-center space-y-4">
-                        <h3 className="text-2xl font-bold text-white">Assessment Complete</h3>
+                    <div className="bg-black/90 backdrop-blur-lg p-6 rounded-2xl border border-white/10 shadow-2xl w-full max-w-lg text-center space-y-4">
+                        <h3 className="text-2xl font-bold text-white flex items-center justify-center gap-2">
+                            <Sparkles className="w-6 h-6 text-cyan-400" />
+                            Assessment Complete
+                        </h3>
                         <div className="grid grid-cols-3 gap-4">
-                            <div className="p-3 bg-green-500/10 rounded-lg border border-green-500/20">
-                                <p className="text-xs text-green-400 uppercase">Score</p>
+                            <div className="p-3 bg-green-500/10 rounded-xl border border-green-500/20">
+                                <p className="text-xs text-green-400 uppercase font-semibold">Score</p>
                                 <p className="text-2xl font-bold text-white">{results.accuracy}%</p>
                             </div>
-                            <div className="p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
-                                <p className="text-xs text-blue-400 uppercase">Correct</p>
+                            <div className="p-3 bg-blue-500/10 rounded-xl border border-blue-500/20">
+                                <p className="text-xs text-blue-400 uppercase font-semibold">Correct</p>
                                 <p className="text-2xl font-bold text-white">{results.correct}/{results.total}</p>
                             </div>
-                            <div className="p-3 bg-purple-500/10 rounded-lg border border-purple-500/20">
-                                <p className="text-xs text-purple-400 uppercase">Time</p>
+                            <div className="p-3 bg-purple-500/10 rounded-xl border border-purple-500/20">
+                                <p className="text-xs text-purple-400 uppercase font-semibold">Time</p>
                                 <p className="text-2xl font-bold text-white">{formatTime(results.timeTaken)}</p>
                             </div>
                         </div>
-                        <Button onClick={() => navigate('/')} className="w-full">
+                        <Button onClick={() => navigate('/')} className="w-full bg-gradient-to-r from-cyan-600 to-blue-600">
                             Return to Dashboard <ArrowRight className="w-4 h-4 ml-2" />
                         </Button>
                     </div>
