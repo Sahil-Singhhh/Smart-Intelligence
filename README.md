@@ -1,5 +1,5 @@
 # Smart Revision & Test Planner
-
+LIVE DEMO-https://smart-intelligence-eight.vercel.app/
 A production-ready exam preparation tool where the AI directs what, how, and when to study.
 
 ## Tech Stack
